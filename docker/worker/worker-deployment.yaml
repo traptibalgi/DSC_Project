@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demucs-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demucs-worker
+  template:
+    metadata:
+      labels:
+        app: demucs-worker
+    spec:
+      containers:
+        - name: demucs-worker
+          image: "traptibalgi/demucs-worker:v17"
+          env:
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MINIO_PORT
+              value: "9000"
+            - name: MINIO_ROOT_USER
+              value: "rootuser"
+            - name: MINIO_ROOT_PASSWORD
+              value: "rootpass123"
+          ports:
+            - containerPort: 9000
