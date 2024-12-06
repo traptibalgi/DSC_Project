@@ -1,10 +1,10 @@
-VERSION=v17
-DOCKERUSER=traptibalgi
+VERSION=v6
+DOCKERUSER=nidz456dhn
 
 build:
-	docker build -f Dockerfile -t demucs-worker .
+	docker build -f Dockerfile -t proj-worker .
 push:
-	docker tag demucs-worker $(DOCKERUSER)/demucs-worker:$(VERSION)
+	docker tag proj-worker $(DOCKERUSER)/proj-worker:$(VERSION)
 	docker push $(DOCKERUSER)/demucs-worker:$(VERSION)
-	docker tag demucs-worker $(DOCKERUSER)/demucs-worker:latest
-	docker push $(DOCKERUSER)/demucs-worker:latest
+	docker tag proj-worker $(DOCKERUSER)/proj-worker:latest
+	docker push $(DOCKERUSER)/proj-worker:latest

@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: demucs-worker
+  name: proj-worker
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: demucs-worker
+      app: proj-worker
   template:
     metadata:
       labels:
-        app: demucs-worker
+        app: proj-worker
     spec:
       containers:
-        - name: demucs-worker
-          image: "traptibalgi/demucs-worker:v17"
+        - name: proj-worker
+          image: "nidz456dhn/proj-worker:v6"
           env:
             - name: REDIS_PORT
               value: "6379"

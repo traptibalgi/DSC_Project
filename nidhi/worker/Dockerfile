@@ -2,7 +2,7 @@
 FROM xserrat/facebook-demucs:latest
 
 # Install necessary dependencies
-RUN pip install redis minio requests
+RUN pip install redis minio requests beautifulsoup4 pandas
 
 # Set environment variables 
 ENV REDIS_HOST=redis
