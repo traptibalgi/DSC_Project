@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proj-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: proj-worker
+  template:
+    metadata:
+      labels:
+        app: proj-worker
+    spec:
+      containers:
+        - name: proj-worker
+          image: "traptibalgi/proj-worker:v3"
+          env:
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MINIO_PORT
+              value: "9000"
+            - name: MINIO_ROOT_USER
+              value: "rootuser"
+            - name: MINIO_ROOT_PASSWORD
+              value: "rootpass123"
+          ports:
+            - containerPort: 9000

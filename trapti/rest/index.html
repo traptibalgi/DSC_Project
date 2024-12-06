@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Link Submission</title>
+    <script>
+        function submitLink() {
+            const link = document.getElementById("amazonLink").value;
+            
+            if (!link || !link.startsWith("https://www.amazon.")) {
+                alert("Please enter a valid Amazon link.");
+                return;
+            }
+
+            // Prepare the request data
+            const data = { "link": link };
+            
+            fetch("/apiv1/link", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert("Link enqueued with ID: " + data.link_id);
+                console.log(data);
+            })
+            .catch(error => {
+                alert("Error: " + error);
+                console.error(error);
+            });
+        }
+    </script>
+</head>
+<body>
+    <h1>Submit Amazon Link</h1>
+    <form onsubmit="event.preventDefault(); submitLink();">
+        <label for="amazonLink">Amazon Link:</label>
+        <input type="text" id="amazonLink" name="link" placeholder="Enter Amazon product link">
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>
