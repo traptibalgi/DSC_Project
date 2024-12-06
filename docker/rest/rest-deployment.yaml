@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: rest-server
+  name: rest
 spec:
   replicas: 1 #Deploy 1 pod
   selector:
     matchLabels:
-      app: rest-server
+      app: rest
   template:
     metadata:
       labels:
-        app: rest-server
+        app: rest
     spec:
       containers:
-        - name: rest-server
-          image: "traptibalgi/demucs-rest:v21"  
+        - name: rest
+          image: "traptibalgi/rest:v3"  
           ports:
             - containerPort: 5000
           env:

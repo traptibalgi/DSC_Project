@@ -23,7 +23,7 @@ kill_processes_on_ports_windows
 kubectl port-forward --address 0.0.0.0 service/redis 6379:6379 &
 kubectl port-forward -n minio-ns --address 0.0.0.0 service/minio-proj 9000:9000 &
 kubectl port-forward -n minio-ns --address 0.0.0.0 service/minio-proj 9001:9001 &
-kubectl port-forward --address 0.0.0.0 svc/rest-server 5000:5000 &
+kubectl port-forward --address 0.0.0.0 svc/rest 5000:5000 &
 
 # Notify user
 echo "Port forwarding started."

@@ -4,3 +4,4 @@ jsonpickle
 requests
 minio
 uuid
+flask_cors

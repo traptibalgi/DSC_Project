@@ -1,11 +1,11 @@
-VERSION=v21
+VERSION=v3
 DOCKERUSER=traptibalgi
 
 build:
-	docker build -f Dockerfile -t demucs-rest .
+	docker build -f Dockerfile -t rest .
 
 push:
-	docker tag demucs-rest $(DOCKERUSER)/demucs-rest:$(VERSION)
-	docker push $(DOCKERUSER)/demucs-rest:$(VERSION)
-	docker tag demucs-rest $(DOCKERUSER)/demucs-rest:latest
-	docker push $(DOCKERUSER)/demucs-rest:latest
+	docker tag rest $(DOCKERUSER)/rest:$(VERSION)
+	docker push $(DOCKERUSER)/rest:$(VERSION)
+	docker tag demucs-rest $(DOCKERUSER)/rest:latest
+	docker push $(DOCKERUSER)/rest:latest

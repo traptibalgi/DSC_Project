@@ -1,60 +1,49 @@
 import os
 import json
+import uuid
 import logging
 import redis
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 
-# Initialize Flask app
 app = Flask(__name__)
+CORS(app)
 
-# Initialize logging
 logging.basicConfig(level=logging.DEBUG)
 
 # Initialize Redis connection
-redis_client = redis.StrictRedis(host='redis', port=6379, db=0, decode_responses=True)
+try:
+    redis_client = redis.StrictRedis(host='redis', port=6379, db=0, decode_responses=True)
+except Exception as e:
+    logging.error(f"Failed to connect to Redis: {str(e)}")
 
-# Endpoint to accept Amazon link and push it to Redis
+@app.route('/', methods=['GET'])
+def home():
+    return "Welcome to the REST API! Use /apiv1/link or /apiv1/queue to interact with the API."
+
 @app.route('/apiv1/link', methods=['POST'])
 def add_link():
     try:
-        # Parse the incoming JSON
         data = request.get_json()
         logging.debug(f"Received data: {data}")
-
-        # Validate the input
         link = data.get("link")
         if not link or not link.startswith("https://www.amazon."):
             return jsonify({"error": "Invalid or missing Amazon link"}), 400
-
-        # Generate a unique identifier for the link
         link_id = str(uuid.uuid4())
-
-        # Store the link in Redis
-        redis_client.hset(link_id, mapping={
-            "link_id": link_id,
-            "link": link
-        })
+        redis_client.hset(link_id, mapping={"link_id": link_id, "link": link})
         redis_client.lpush("linkQueue", link_id)
-
         logging.debug(f"Link enqueued with ID: {link_id}")
         return jsonify({"link_id": link_id, "status": "Link enqueued for processing"}), 200
-
     except Exception as e:
         logging.error(f"Error in /apiv1/link: {str(e)}")
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
 
-# Endpoint to view the queue of links
 @app.route('/apiv1/queue', methods=['GET'])
 def get_queue():
     try:
-        # Retrieve the list of enqueued link IDs
         queue = redis_client.lrange("linkQueue", 0, -1)
-
-        # Fetch details for each link from Redis
         links = [redis_client.hgetall(link_id) for link_id in queue]
-
         return jsonify({"queue": links}), 200
-
     except Exception as e:
         logging.error(f"Error in /apiv1/queue: {str(e)}")
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500

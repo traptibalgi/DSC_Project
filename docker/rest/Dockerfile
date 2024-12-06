@@ -4,7 +4,7 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Copy files
-COPY rest-server.py /app/
+COPY rest.py /app/
 COPY requirements.txt /app/
 
 RUN apt-get update && apt-get install -y redis-tools
@@ -16,4 +16,4 @@ RUN pip install -r requirements.txt
 EXPOSE 5000
 
 # Command to run Flask server
-CMD ["python", "rest-server.py"]
+CMD ["python", "rest.py"]
