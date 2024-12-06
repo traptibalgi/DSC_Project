@@ -7,6 +7,9 @@ import redis
 import json
 import requests 
 import hashlib
+import time
+from bs4 import BeautifulSoup
+import pandas as pd
 
 # Initialize logging
 logging.basicConfig(level=logging.DEBUG)
@@ -23,110 +26,125 @@ minio_client = Minio(
 )
 
 # Ensure that the bucket exists
-bucket_name = "songs"
+bucket_name = "reviews"
 if not minio_client.bucket_exists(bucket_name):
     minio_client.make_bucket(bucket_name)
     logging.debug(f"Bucket '{bucket_name}' created in MinIO.")
 
-# Path where processed tracks are saved
-TRACK_STORAGE = "/app/track_storage"
-os.makedirs(TRACK_STORAGE, exist_ok=True)
+# Amazon scraping functions
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
+    'Accept-Language': 'en-US, en;q=0.5'
+}
 
-# Output bucket where separated tracks will be stored
-output_bucket = "output"
+def getdata(url):
+    r = requests.get(url, headers=HEADERS)
+    return r.text
 
-if not minio_client.bucket_exists(output_bucket):
-    minio_client.make_bucket(output_bucket)
-    logging.debug(f"Output bucket '{output_bucket}' created in MinIO.")
+def html_code(url):
+    htmldata = getdata(url)
+    soup = BeautifulSoup(htmldata, 'html.parser')
+    return soup
 
-def run_demucs(separation_command):
-    """ Run the DEMUCS separation command and capture its output. """
+def get_product_info(soup):
+    product_name = soup.find('span', {'id': 'productTitle'})
+    product_name = product_name.get_text().strip() if product_name else "N/A"
+    
+    user_rating = soup.find('span', {'class': 'a-icon-alt'})
+    user_rating = user_rating.get_text().strip() if user_rating else "N/A"
+    
+    return product_name, user_rating
+
+def get_reviews(soup):
+    reviews = []
+    review_elements = soup.find_all("div", class_="a-expander-content reviewText review-text-content a-expander-partial-collapse-content")
+    
+    for review_element in review_elements:
+        review_text = review_element.get_text().strip()
+        review_date = review_element.find_previous('span', class_="a-size-base a-color-secondary review-date")
+        review_date = review_date.get_text().strip() if review_date else "N/A"
+        reviews.append({'Review': review_text, 'Review Date': review_date})
+    
+    return reviews
+
+def get_reviews_from_multiple_pages(product_url, num_pages=5):
+    reviews = []
+    soup = html_code(product_url)
+    product_name, user_rating = get_product_info(soup)
+    
+    for page in range(1, num_pages + 1):
+        paginated_url = f"{product_url}?pageNumber={page}"
+        soup = html_code(paginated_url)
+        page_reviews = get_reviews(soup)
+        
+        for review in page_reviews:
+            reviews.append({
+                'Product Name': product_name,
+                'User Rating': user_rating,
+                'Review Date': review['Review Date'],
+                'Review': review['Review']
+            })
+        time.sleep(2)
+    
+    return reviews
+
+def process_task(reviewhash):
     try:
-        result = subprocess.run(separation_command, capture_output=True, text=True, check=True)
-        logging.debug(f"DEMucs output: {result.stdout}")
-        logging.error(f"DEMucs error: {result.stderr}")
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Error running DEMucs command: {e}")
-        logging.error(f"Error stdout: {e.stdout}")
-        logging.error(f"Error stderr: {e.stderr}")
+        # Retrieve Amazon URL from Redis
+        amazon_url = redis_client.hget(reviewhash, "amazon_url")
+        if not amazon_url:
+            logging.error(f"No Amazon URL provided for reviewhash {reviewhash}")
+            return
 
-def process_task(songhash):
-    try:
-        # Download the MP3 file from MinIO
-        mp3_file_path = f"/tmp/{songhash}.mp3"
-        minio_client.fget_object(bucket_name, f"{songhash}.mp3", mp3_file_path)
-        logging.debug(f"Downloaded MP3 file for {songhash} to {mp3_file_path}")
+        # Scrape reviews
+        reviews_data = get_reviews_from_multiple_pages(amazon_url)
+        if not reviews_data:
+            logging.error(f"No reviews found for {amazon_url}")
+            return
 
-        # Construct the DEMUCS separation command
-        output_dir = f"/tmp/output/{songhash}"
-        os.makedirs(output_dir, exist_ok=True)
+        # Save reviews to CSV
+        csv_file = f"/tmp/{reviewhash}_reviews.csv"
+        df = pd.DataFrame(reviews_data)
+        df.to_csv(csv_file, index=False)
+        logging.debug(f"CSV file created: {csv_file}")
 
-        separation_command = [
-            "python3", "-m", "demucs.separate", 
-            "--out", output_dir, 
-            mp3_file_path,
-            "--mp3"
-        ]
-        logging.debug(f"Running DEMUCS command: {' '.join(separation_command)}")
-
-        # Run the separation
-        run_demucs(separation_command)
-
-        # Check if output was generated
-        separated_dir = os.path.join(output_dir, "mdx_extra_q", songhash)
-        if os.path.exists(separated_dir):
-            logging.debug(f"Separated tracks are available in {separated_dir}")
-
-            # Now upload the separated tracks to the 'output' bucket in MinIO
-            for track in os.listdir(separated_dir):
-                track_path = os.path.join(separated_dir, track)
-                if os.path.isfile(track_path):
-                    # Upload each track to MinIO
-                    minio_object_path = f"{songhash}/{track}"
-                    try:
-                        minio_client.fput_object(output_bucket, minio_object_path, track_path)
-                        logging.debug(f"Uploaded {minio_object_path} to MinIO '{output_bucket}' bucket.")
-                    except S3Error as e:
-                        logging.error(f"Error uploading {minio_object_path} to MinIO: {e}")
-        else:
-            logging.error(f"Separated tracks were not found in {separated_dir}")
+        # Upload CSV to MinIO
+        csv_object_path = f"{reviewhash}/reviews.csv"
+        minio_client.fput_object(bucket_name, csv_object_path, csv_file)
+        logging.debug(f"Uploaded CSV to MinIO: {csv_object_path}")
 
     except Exception as e:
-        logging.error(f"Error processing task for {songhash}: {str(e)}")
+        logging.error(f"Error processing task for {reviewhash}: {str(e)}")
+
+# def process_retrieval(reviewhash):
+#     try:
+#         # Retrieve CSV from MinIO
+#         csv_object_path = f"{reviewhash}/reviews.csv"
+#         csv_file_path = f"/tmp/{reviewhash}_reviews.csv"
+#         minio_client.fget_object(bucket_name, csv_object_path, csv_file_path)
+#         logging.debug(f"Downloaded CSV from MinIO: {csv_file_path}")
+
+#         # Load the CSV and extract the product name
+#         df = pd.read_csv(csv_file_path)
+#         product_name = df['Product Name'][0]  # Assuming all rows have the same product name
+
+#         # Send product name to the REST server
+#         payload = {"product_name": product_name}
+#         response = requests.post(REST_SERVER_URL, json=payload)
+#         if response.status_code == 200:
+#             logging.debug(f"Product name sent to REST server: {product_name}")
+#         else:
+#             logging.error(f"Failed to send product name. REST server responded with: {response.text}")
+
+#     except Exception as e:
+#         logging.error(f"Error processing task for {reviewhash}: {str(e)}")
 
 def worker():
     logging.debug("Worker is listening for tasks in the Redis queue...")
     while True:
-        # Listen for tasks in Redis queue
-        songhash = redis_client.brpop("toWorker", 0)[1]
-        logging.debug(f"Received task for song with hash: {songhash}")
-
-        # Retrieve callback data from Redis
-        callback_data = redis_client.hget(songhash, "callback")
-        if callback_data:
-            callback = json.loads(callback_data)
-            callback_url = callback.get("url")
-            callback_payload = callback.get("data")
-
-            # Process the task
-            process_task(songhash)
-
-            # Notify the callback URL with the result after processing
-            if callback_url:
-                try:
-                    response = requests.post(callback_url, json={
-                        "status": "completed",
-                        "songhash": songhash,
-                        "track_data": callback_payload
-                    })
-                    if response.status_code == 200:
-                        logging.debug(f"Callback notification sent to {callback_url}")
-                    else:
-                        logging.error(f"Failed to send callback notification to {callback_url}, status code: {response.status_code}")
-                except Exception as e:
-                    logging.error(f"Error sending callback notification: {str(e)}")
-        else:
-            logging.error(f"No callback found for song with hash: {songhash}")
+        reviewhash = redis_client.brpop("toWorker", 0)[1]
+        logging.debug(f"Received task for review with hash: {reviewhash}")
+        process_task(reviewhash)
 
 if __name__ == "__main__":
     worker()
