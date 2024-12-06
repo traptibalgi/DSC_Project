@@ -3,7 +3,7 @@ import json
 import uuid
 import logging
 import redis
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -17,9 +17,42 @@ try:
 except Exception as e:
     logging.error(f"Failed to connect to Redis: {str(e)}")
 
-@app.route('/', methods=['GET'])
+@app.route('/', methods=['GET', 'POST'])
 def home():
-    return "Welcome to the REST API! Use /apiv1/link or /apiv1/queue to interact with the API."
+    if request.method == 'POST':
+        # Get the link submitted by the user
+        link = request.form.get('link')
+        if link and link.startswith("https://a.co/"):
+            try:
+                # Generate a unique ID and store the link in Redis
+                link_id = str(uuid.uuid4())
+                redis_client.hset(link_id, mapping={"link_id": link_id, "link": link})
+                redis_client.lpush("linkQueue", link_id)
+                logging.debug(f"Link enqueued with ID: {link_id}")
+                return jsonify({"link_id": link_id, "status": "Link enqueued for processing"}), 200
+            except Exception as e:
+                logging.error(f"Error in /: {str(e)}")
+                return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
+        else:
+            return "Invalid or missing Amazon link. Please try again.", 400
+
+    # Render the HTML form
+    html_content = '''
+    <!doctype html>
+    <html lang="en">
+    <head>
+        <title>Link Submission</title>
+    </head>
+    <body>
+        <h1>Enter Amazon Link</h1>
+        <form method="post">
+            <input type="text" name="link" placeholder="https://www.amazon.com/dp/example1" required>
+            <button type="submit">Submit</button>
+        </form>
+    </body>
+    </html>
+    '''
+    return render_template_string(html_content)
 
 @app.route('/apiv1/link', methods=['POST'])
 def add_link():

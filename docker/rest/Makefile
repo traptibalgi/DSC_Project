@@ -1,4 +1,4 @@
-VERSION=v3
+VERSION=v6
 DOCKERUSER=traptibalgi
 
 build:
