@@ -11,6 +11,17 @@ import time
 import bs4
 from bs4 import BeautifulSoup
 import pandas as pd
+from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from io import StringIO
+from transformers import AutoModelForSequenceClassification
+import torch
+from transformers import BertTokenizer, BertModel
+from sklearn.preprocessing import normalize
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+import nltk
+from collections import Counter
+
 
 # Initialize logging
 logging.basicConfig(level=logging.DEBUG)
@@ -28,9 +39,14 @@ minio_client = Minio(
 
 # Ensure that the bucket exists
 bucket_name = "reviews"
+output_bucket_name = "analysis_output"
 if not minio_client.bucket_exists(bucket_name):
     minio_client.make_bucket(bucket_name)
     logging.debug(f"Bucket '{bucket_name}' created in MinIO.")
+
+if not minio_client.bucket_exists(output_bucket_name):
+    minio_client.make_bucket(output_bucket_name)
+    logging.debug(f"Bucket '{output_bucket_name}' created in MinIO.")
 
 # Amazon scraping functions
 HEADERS = {
@@ -89,6 +105,38 @@ def get_reviews_from_multiple_pages(product_url, num_pages=5):
     
     return reviews
 
+def improved_summary(reviews):
+    # Combine all reviews into a single string
+    combined_reviews = ' '.join(reviews)
+
+    # Load pre-trained summarization model and tokenizer
+    model_name = "facebook/bart-large-cnn"  # Use a more advanced summarizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+
+    # Tokenize the input text
+    inputs = tokenizer(
+        combined_reviews,
+        return_tensors="pt",
+        truncation=True,
+        max_length=1024  # Truncate large inputs to avoid memory issues
+    )
+
+    # Generate summary with adjusted decoding settings
+    summary_ids = model.generate(
+        inputs.input_ids,
+        max_length=100,  # Set maximum summary length
+        num_beams=4,     # Use beam search with 4 beams
+        repetition_penalty=2.5,  # Penalize repetition
+        length_penalty=1.0,      # Control output length
+        early_stopping=True
+    )
+
+    # Decode the generated summary
+    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
+    return summary
+
 def process_task(reviewhash):
     try:
         # Retrieve Amazon URL from Redis
@@ -113,6 +161,20 @@ def process_task(reviewhash):
         csv_object_path = f"{reviewhash}/reviews.csv"
         minio_client.fput_object(bucket_name, csv_object_path, csv_file)
         logging.debug(f"Uploaded CSV to MinIO: {csv_object_path}")
+
+        # ANALYSIS: Generate the summary of the reviews
+        summary = improved_summary(df['Review'])
+
+        # Save summary to DataFrame and then upload it to another MinIO bucket
+        output_df = pd.DataFrame({'summary': [summary]})
+        summary_file = f"/tmp/{reviewhash}_summary_output.csv"
+        output_df.to_csv(summary_file, index=False)
+        logging.info(f"Summary file created: {summary_file}")
+
+        # Upload the summary to the analysis output bucket
+        summary_object_path = f"{reviewhash}/summary_output.csv"
+        minio_client.fput_object(output_bucket_name, summary_object_path, summary_file)
+        logging.info(f"Uploaded summary to MinIO: {summary_object_path}")
 
     except Exception as e:
         logging.error(f"Error processing task for {reviewhash}: {str(e)}")
