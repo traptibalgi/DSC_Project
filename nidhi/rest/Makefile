@@ -1,4 +1,4 @@
-VERSION=v9
+VERSION=v10
 DOCKERUSER=nidz456dhn
 
 build:

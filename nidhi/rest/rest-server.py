@@ -11,7 +11,6 @@ app = Flask(__name__)
 # Initialize logging
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
-
 # Initialize Redis connection
 redis_client = redis.StrictRedis(host='redis', port=6379, db=0, decode_responses=True)
 
@@ -31,6 +30,35 @@ html_template = """
         <input type="text" id="link" name="link" required>
         <button type="submit">Submit</button>
     </form>
+    <div id="status"></div>
+    <div id="callback"></div>
+
+    <script>
+    function checkStatus(linkId) {
+        fetch('/apiv1/status/' + linkId)
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').innerText = 'Status: ' + data.status;
+                if (data.callback) {
+                    const callbackData = JSON.parse(data.callback);
+                    document.getElementById('callback').innerHTML = `
+                        <h2>Callback Details</h2>
+                        <p><strong>Product Name:</strong> ${callbackData.product_name}</p>
+                        <p><strong>Summary:</strong> ${callbackData.summary}</p>
+                        <p><strong>Sentiments:</strong></p>
+                        <ul>
+                            <li>Positive: ${callbackData.sentiments.positive}%</li>
+                            <li>Neutral: ${callbackData.sentiments.neutral}%</li>
+                            <li>Negative: ${callbackData.sentiments.negative}%</li>
+                        </ul>
+                    `;
+                }
+                if (data.status !== 'completed' && data.status !== 'failed') {
+                    setTimeout(() => checkStatus(linkId), 5000);
+                }
+            });
+    }
+    </script>
 </body>
 </html>
 """
@@ -38,9 +66,7 @@ html_template = """
 # Serve the HTML form at the root URL
 @app.route('/', methods=['GET'])
 def index():
-    print("Root URL accessed")
     return render_template_string(html_template)
-
 
 # Endpoint to accept Amazon link and push it to Redis
 @app.route('/apiv1/link', methods=['POST'])
@@ -57,16 +83,17 @@ def add_link():
         # Generate a unique identifier for the link
         link_id = str(uuid.uuid4())
 
-        # Store the link in Redis
+        # Store the link in Redis with an initial empty callback
         redis_client.hset(link_id, mapping={
             "link_id": link_id,
-            "link": link
+            "link": link,
+            "status": "queued",
+            "callback": ""  # Initialize callback as an empty string
         })
         redis_client.lpush("linkQueue", link_id)
 
         logging.debug(f"Link enqueued with ID: {link_id}")
-        return jsonify({"link_id": link_id, "status": "Link enqueued for processing"}), 200
-
+        return render_template_string(html_template + f"<script>checkStatus('{link_id}')</script>")
     except Exception as e:
         logging.error(f"Error in /apiv1/link: {str(e)}")
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
@@ -85,6 +112,42 @@ def get_queue():
 
     except Exception as e:
         logging.error(f"Error in /apiv1/queue: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
+
+# Endpoint to check status and callback
+@app.route('/apiv1/status/<link_id>', methods=['GET'])
+def get_status(link_id):
+    try:
+        link_data = redis_client.hgetall(link_id)
+        if not link_data:
+            return jsonify({"error": "Link ID not found"}), 404
+        return jsonify({
+            "status": link_data.get("status", "unknown"),
+            "callback": link_data.get("callback", "")
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error in /apiv1/status: {str(e)}")
+        return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
+
+# Endpoint to view processed items
+@app.route('/apiv1/processed', methods=['GET'])
+def get_processed_items():
+    try:
+        # Retrieve all keys from Redis
+        keys = redis_client.keys()
+
+        # Fetch details for completed or failed items
+        processed_items = []
+        for key in keys:
+            item = redis_client.hgetall(key)
+            if item.get("status") in ["completed", "failed"]:
+                processed_items.append(item)
+
+        return jsonify({"processed_items": processed_items}), 200
+
+    except Exception as e:
+        logging.error(f"Error in /apiv1/processed: {str(e)}")
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
 
 if __name__ == '__main__':

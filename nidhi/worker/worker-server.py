@@ -249,6 +249,21 @@ def process_task(reviewhash):
         minio_client.fput_object(output_bucket_name, sentiment_object_path, sentiment_file)
         logging.info(f"Sentiment analysis saved to MinIO: {sentiment_object_path}")
 
+        # Calculate average user rating
+        logging.info(f"Calculating average user rating for task: {reviewhash}")
+        df['Numeric Rating'] = df['User Rating'].str.extract(r'(\d\.\d)').astype(float)
+        average_rating = df['Numeric Rating'].mean()
+        
+        # Save average rating result
+        average_rating_df = pd.DataFrame({'average_rating': [average_rating]})
+        average_rating_file = f"/tmp/{reviewhash}_average_rating.csv"
+        average_rating_df.to_csv(average_rating_file, index=False)
+        
+        average_rating_object_path = f"{reviewhash}/average_rating.csv"
+        minio_client.fput_object(output_bucket_name, average_rating_object_path, average_rating_file)
+        logging.info(f"Average rating saved to MinIO: {average_rating_object_path}")
+
+
         # Extract product name and update the callback in Redis
         product_names = df['Product Name'].drop_duplicates().tolist()
         if product_names:
@@ -258,6 +273,21 @@ def process_task(reviewhash):
             # Set the callback value in Redis
             redis_client.hset(reviewhash, "callback", product_name)
             logging.info(f"Set callback for {reviewhash}: {product_name}")
+
+        # # Update the status to completed
+        # redis_client.hset(reviewhash, "status", "completed")
+        # logging.info(f"Task completed for reviewhash: {reviewhash}")
+         # Update Redis with results
+        redis_client.hset(reviewhash, "callback", json.dumps({
+            "product_name": product_name,
+            "summary": summary,
+            "sentiments": {
+                "positive": float(positive),
+                "neutral": float(neutral),
+                "negative": float(negative)
+            }
+        }))
+        logging.info(f"Set callback for {reviewhash}: {product_name}, summary, and sentiments")
 
         # Update the status to completed
         redis_client.hset(reviewhash, "status", "completed")
