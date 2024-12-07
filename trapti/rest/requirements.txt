@@ -1,0 +1,6 @@
+Flask
+redis
+jsonpickle
+requests
+minio
+uuid

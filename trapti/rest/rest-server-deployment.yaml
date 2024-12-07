@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rest-server
+spec:
+  replicas: 1 #Deploy 1 pod
+  selector:
+    matchLabels:
+      app: rest-server
+  template:
+    metadata:
+      labels:
+        app: rest-server
+    spec:
+      containers:
+        - name: rest-server
+          image: "traptibalgi/rest:v11"  
+          ports:
+            - containerPort: 5000
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MINIO_HOST
+              value: "minio-proj.minio-ns.svc.cluster.local:9000"

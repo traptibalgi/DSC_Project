@@ -2,7 +2,8 @@
 FROM xserrat/facebook-demucs:latest
 
 # Install necessary dependencies
-RUN pip install redis minio requests beautifulsoup4 pandas
+RUN pip install redis minio requests beautifulsoup4 pandas openai==0.28.0
+RUN pip show openai
 
 # Set environment variables 
 ENV REDIS_HOST=redis
