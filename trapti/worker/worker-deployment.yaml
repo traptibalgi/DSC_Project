@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: proj-worker
-          image: "traptibalgi/proj-worker:v3"
+          image: "traptibalgi/proj-worker:v9"
           env:
             - name: REDIS_PORT
               value: "6379"

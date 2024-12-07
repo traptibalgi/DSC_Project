@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: rest-server
-          image: "traptibalgi/rest:v11"  
+          image: "traptibalgi/rest:v12"  
           ports:
             - containerPort: 5000
           env:

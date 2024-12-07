@@ -2,7 +2,9 @@
 FROM xserrat/facebook-demucs:latest
 
 # Install necessary dependencies
-RUN pip install redis minio requests beautifulsoup4 pandas
+RUN pip install redis minio requests beautifulsoup4 pandas transformers scikit-learn nltk openai==0.28.0
+RUN pip show openai
+RUN pip install --upgrade torch torchvision
 
 # Set environment variables 
 ENV REDIS_HOST=redis
