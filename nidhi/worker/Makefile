@@ -1,4 +1,4 @@
-VERSION=v21
+VERSION=v23
 DOCKERUSER=nidz456dhn
 
 build:
