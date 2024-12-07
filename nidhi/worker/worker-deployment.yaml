@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: proj-worker
-          image: "nidz456dhn/proj-worker:v26"
+          image: "nidz456dhn/proj-worker:v30"
           env:
             - name: REDIS_PORT
               value: "6379"

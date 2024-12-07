@@ -1,4 +1,4 @@
-VERSION=v26
+VERSION=v30
 DOCKERUSER=nidz456dhn
 
 build:

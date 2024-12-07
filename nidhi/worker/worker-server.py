@@ -22,6 +22,8 @@ from sklearn.preprocessing import normalize
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 import nltk
 from collections import Counter
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.decomposition import LatentDirichletAllocation
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -198,6 +200,22 @@ def classify_emotions(reviews):
 
     return positive_percentage, negative_percentage, neutral_percentage
 
+# Download NLTK stopwords
+nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('punkt_tab')
+from nltk.corpus import stopwords
+stop_words = stopwords.words('english')
+
+# Function to preprocess reviews for topic modeling
+def preprocess_reviews(reviews):
+    processed_reviews = []
+    for review in reviews:
+        tokens = nltk.word_tokenize(review.lower())
+        filtered_tokens = [token for token in tokens if token not in stop_words and len(token) > 1]
+        processed_reviews.append(" ".join(filtered_tokens))
+    return processed_reviews
+
 def process_task(reviewhash):
     try:
         logging.info(f"Starting task for reviewhash: {reviewhash}")
@@ -253,6 +271,7 @@ def process_task(reviewhash):
         logging.info(f"Calculating average user rating for task: {reviewhash}")
         df['Numeric Rating'] = df['User Rating'].str.extract(r'(\d\.\d)').astype(float)
         average_rating = df['Numeric Rating'].mean()
+        average_rating = round(average_rating, 2)
         
         # Save average rating result
         average_rating_df = pd.DataFrame({'average_rating': [average_rating]})
@@ -262,6 +281,43 @@ def process_task(reviewhash):
         average_rating_object_path = f"{reviewhash}/average_rating.csv"
         minio_client.fput_object(output_bucket_name, average_rating_object_path, average_rating_file)
         logging.info(f"Average rating saved to MinIO: {average_rating_object_path}")
+
+        # Preprocess reviews for topic modeling
+        logging.info(f"Preprocessing reviews for topic modeling in task: {reviewhash}")
+        reviews = df['Review'].tolist()
+        processed_reviews = preprocess_reviews(reviews)
+        df['Processed_Review_New'] = processed_reviews
+
+        # Topic modeling with LDA
+        logging.info(f"Performing topic modeling for task: {reviewhash}")
+        vectorizer = CountVectorizer(stop_words='english')
+        X = vectorizer.fit_transform(df['Processed_Review_New'])
+
+        lda = LatentDirichletAllocation(n_components=5, random_state=42)  # 5 topics
+        lda.fit(X)
+
+        terms = vectorizer.get_feature_names_out()
+        topics = []
+
+        for index, topic in enumerate(lda.components_):
+            top_words = [terms[i] for i in topic.argsort()[-10:]]  # Top 10 words per topic
+            topics.append(", ".join(top_words))
+
+        # Save topics to a CSV file
+        topic_df = pd.DataFrame({
+            'topic1': [topics[0]],
+            'topic2': [topics[1]],
+            'topic3': [topics[2]],
+            'topic4': [topics[3]],
+            'topic5': [topics[4]]
+        })
+
+        topic_file = f"/tmp/{reviewhash}_topics.csv"
+        topic_df.to_csv(topic_file, index=False)
+        
+        topic_object_path = f"{reviewhash}/topics.csv"
+        minio_client.fput_object(output_bucket_name, topic_object_path, topic_file)
+        logging.info(f"Topic modeling results saved to MinIO: {topic_object_path}")
 
 
         # Extract product name and update the callback in Redis
@@ -281,10 +337,11 @@ def process_task(reviewhash):
         redis_client.hset(reviewhash, "callback", json.dumps({
             "product_name": product_name,
             "summary": summary,
+            "average_rating": average_rating,
             "sentiments": {
                 "positive": float(positive),
                 "neutral": float(neutral),
-                "negative": float(negative)
+                "negative": float(negative)  
             }
         }))
         logging.info(f"Set callback for {reviewhash}: {product_name}, summary, and sentiments")

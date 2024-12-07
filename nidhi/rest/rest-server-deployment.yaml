@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: rest-server
-          image: "nidz456dhn/rest:v10"  
+          image: "nidz456dhn/rest:v12"  
           ports:
             - containerPort: 5000
           env:

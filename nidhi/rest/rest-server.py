@@ -42,8 +42,9 @@ html_template = """
                 if (data.callback) {
                     const callbackData = JSON.parse(data.callback);
                     document.getElementById('callback').innerHTML = `
-                        <h2>Callback Details</h2>
+                        <h2>Product Insights</h2>
                         <p><strong>Product Name:</strong> ${callbackData.product_name}</p>
+                        <p><strong>Overall User Rating:</strong> ${callbackData.average_rating}</p>
                         <p><strong>Summary:</strong> ${callbackData.summary}</p>
                         <p><strong>Sentiments:</strong></p>
                         <ul>
